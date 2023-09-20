@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://waltti.fi/schema/bundle/1-0-0/profile-collection.schema.json",
+  "title": "Vehicle anonymization profiles",
+  "description": "Collection of anonymization profiles for transit vehicles to anonymize automatic passenger counting (APC) results.",
+  "properties": {
+    "schemaVersion": {
+      "description": "The SchemaVer version number of the JSON schema that this message follows. A valid value is for example '1-0-0'.",
+      "type": "string",
+      "minLength": 5
+    },
+    "vehicleModels": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^\\d+-\\d+$",
+        "minLength": 3
+      }
+    },
+    "modelProfiles": {
+      "type": "object",
+      "minProperties": 1,
+      "patternProperties": {
+        "^\\d+-\\d+$": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["vehicleModels", "modelProfiles"]
+}
