@@ -1,0 +1,48 @@
+[tool.poetry]
+name = "waltti-apc-vehicle-anonymization-profiler"
+version = "0.1.0"
+description = "Create anonymization profiles for vehicles"
+license = "EUPL-1.2"
+authors = ["haphut <haphut@mistmap.com>"]
+readme = "README.md"
+repository = "https://github.com/tvv-lippu-ja-maksujarjestelma-oy/waltti-apc-vehicle-anonymization-profiler"
+packages = [{include = "waltti_apc_vehicle_anonymization_profiler", from = "src"}]
+
+[tool.poetry.dependencies]
+# As the library is used only here, use the master branch directly.
+apc-anonymizer = {git = "https://github.com/tvv-lippu-ja-maksujarjestelma-oy/waltti-apc-vehicle-anonymization-profiler-library.git"}
+flask = "^2.3.3"
+google-cloud-logging = "^3.6.0"
+jsonschema = "^4.19.0"
+pulsar-client = "^3.3.0"
+python = "^3.11"
+pyyaml = "^6.0.1"
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.7.0"
+pytest = "^7.4.0"
+pytest-mock = "^3.10.0"
+requests = "^2.31.0"
+ruff = "^0.0.286"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 79
+select = ["E", "F", "I", "B", "Q"]
+
+[tool.black]
+line-length = 79
+
+[tool.poe.tasks]
+black = ["black-preview", "black-normal"]
+black-check = "black --check src tests"
+black-normal = "black src tests"
+black-preview = "black --preview src tests"
+check = ["black-check", "ruff-check","test"]
+ruff = "ruff --fix src tests"
+ruff-check = "ruff src tests"
+start = "python src/waltti_apc_vehicle_anonymization_profiler/main.py"
+test = "pytest tests"
