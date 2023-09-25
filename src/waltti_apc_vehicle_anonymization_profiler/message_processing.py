@@ -126,7 +126,6 @@ def get_latest_vehicles_to_tuple_models(logger, messages):
         feed_publisher_id: validate_message_data(logger, validator, message)
         for feed_publisher_id, message in messages.items()
     }
-    validate_message_data(logger, validator, messages)
     all_vehicles = {
         feed_publisher_id: [
             vehicle
