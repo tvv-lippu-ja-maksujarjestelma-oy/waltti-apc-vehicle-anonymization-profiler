@@ -2,6 +2,7 @@
 
 import os
 import sys
+import traceback
 
 from waltti_apc_vehicle_anonymization_profiler import (
     configuration,
@@ -79,7 +80,7 @@ def main():
         except Exception as err:
             exit_handler(1, err)
     except Exception as err:
-        print(f"Logging failed: {err}")
+        print("Logging failed: " + traceback.format_exception(err))
         sys.exit(1)
 
 

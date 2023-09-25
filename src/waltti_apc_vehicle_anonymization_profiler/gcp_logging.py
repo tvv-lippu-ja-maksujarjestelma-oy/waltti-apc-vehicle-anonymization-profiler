@@ -1,7 +1,7 @@
 import logging
 import os
 
-import google.cloud.logging
+import google.cloud.logging_v2.handlers
 
 
 def map_log_level(log_level_string):
@@ -39,7 +39,9 @@ def get_log_level():
 
 
 def create_logger(name):
-    logging_client = google.cloud.logging.Client()
-    logging_client.setup_logging(log_level=get_log_level())
-    logger = logging_client.logger(name)
+    google.cloud.logging_v2.handlers.setup_logging(
+        google.cloud.logging_v2.handlers.StructuredLogHandler()
+    )
+    logger = logging.getLogger(name)
+    logger.setLevel(get_log_level())
     return logger
