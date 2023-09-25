@@ -66,7 +66,7 @@ def validate_message_data(logger, validator, message):
             extra={
                 "json_fields": {
                     "err": traceback.format_exception(err),
-                    "message": message,
+                    "pulsarMessage": message,
                 }
             },
         )
