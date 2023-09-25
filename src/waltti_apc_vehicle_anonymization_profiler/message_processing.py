@@ -360,6 +360,8 @@ def form_producer_message_data(vehicles_to_models, string_models_to_profiles):
 def generate_message_to_send(
     logger, cached_string_models_to_profiles, latest_messages
 ):
+    producer_message_data = None
+    min_event_timestamp = None
     cached_tuple_models_to_profiles = {
         split_model_string_to_tuple(k): v
         for k, v in cached_string_models_to_profiles.items()
@@ -370,54 +372,57 @@ def generate_message_to_send(
     needed_tuple_models = set(latest_vehicles_to_tuple_models.values())
     cached_tuple_models = set(cached_tuple_models_to_profiles.keys())
     new_tuple_models = needed_tuple_models.difference(cached_tuple_models)
-    new_string_models_to_profiles = compute_new_profiles(
-        logger, new_tuple_models
-    )
-    needed_string_models_to_profiles = get_needed_string_models_to_profiles(
-        logger,
-        new_string_models_to_profiles,
-        cached_string_models_to_profiles,
-        needed_tuple_models,
-    )
-    latest_vehicles_to_string_models = {
-        k: combine_model_tuple_to_string(v)
-        for k, v in latest_vehicles_to_tuple_models.items()
-    }
-    logger.debug("Form message data to send")
-    producer_message_data = form_producer_message_data(
-        dict(sorted(latest_vehicles_to_string_models.items())),
-        dict(sorted(needed_string_models_to_profiles.items())),
-    )
-    logger.debug("Extract event timestamp to send")
-    event_timestamps = {
-        feed_publisher_id: message.event_timestamp()
-        for feed_publisher_id, message in latest_messages.items()
-    }
-    for feed_publisher_id, event_timestamp in event_timestamps.items():
-        if event_timestamp is None:
-            message = latest_messages[feed_publisher_id]
-            logger.critical(
-                "Event timestamp must exist as we have computed new models and"
-                " that requires that a message has been received. Either we"
-                " have a logic error or the message is missing its event"
-                " timestamp in the source topic.",
-                extra={
-                    "json_fields": {
-                        "messageDataString": message.data().decode(
-                            encoding="utf-8", errors="replace"
-                        ),
-                        "feedPublisherId": feed_publisher_id,
-                        "topic": message.topic_name(),
-                        "properties": message.properties(),
-                    }
-                },
+    if len(new_tuple_models) > 0:
+        new_string_models_to_profiles = compute_new_profiles(
+            logger, new_tuple_models
+        )
+        needed_string_models_to_profiles = (
+            get_needed_string_models_to_profiles(
+                logger,
+                new_string_models_to_profiles,
+                cached_string_models_to_profiles,
+                needed_tuple_models,
             )
-    nonempty_event_timestamps = {
-        k: v for k, v in event_timestamps.items() if v is not None
-    }
-    min_event_timestamp = time.time_ns() // 1_000_000
-    if len(nonempty_event_timestamps) > 0:
-        min_event_timestamp = min(nonempty_event_timestamps.values())
+        )
+        latest_vehicles_to_string_models = {
+            k: combine_model_tuple_to_string(v)
+            for k, v in latest_vehicles_to_tuple_models.items()
+        }
+        logger.debug("Form message data to send")
+        producer_message_data = form_producer_message_data(
+            dict(sorted(latest_vehicles_to_string_models.items())),
+            dict(sorted(needed_string_models_to_profiles.items())),
+        )
+        logger.debug("Extract event timestamp to send")
+        event_timestamps = {
+            feed_publisher_id: message.event_timestamp()
+            for feed_publisher_id, message in latest_messages.items()
+        }
+        for feed_publisher_id, event_timestamp in event_timestamps.items():
+            if event_timestamp is None:
+                message = latest_messages[feed_publisher_id]
+                logger.critical(
+                    "Event timestamp must exist as we have computed new models"
+                    " and that requires that a message has been received."
+                    " Either we have a logic error or the message is missing"
+                    " its event timestamp in the source topic.",
+                    extra={
+                        "json_fields": {
+                            "messageDataString": message.data().decode(
+                                encoding="utf-8", errors="replace"
+                            ),
+                            "feedPublisherId": feed_publisher_id,
+                            "topic": message.topic_name(),
+                            "properties": message.properties(),
+                        }
+                    },
+                )
+        nonempty_event_timestamps = {
+            k: v for k, v in event_timestamps.items() if v is not None
+        }
+        min_event_timestamp = time.time_ns() // 1_000_000
+        if len(nonempty_event_timestamps) > 0:
+            min_event_timestamp = min(nonempty_event_timestamps.values())
     return producer_message_data, min_event_timestamp
 
 
@@ -483,23 +488,25 @@ def process_messages(
             cached_string_models_to_profiles,
             latest_messages,
         )
-        # FIXME:
-        # Due to a known issue we close Pulsar before we use multiprocessing.
-        # Once the issue is satisfactorily resolved, do not close and recreate
-        # Pulsar resources here and leave it to the responsibility of main().
-        # https://github.com/apache/pulsar-client-python/issues/127
-        logger.info("Create Pulsar client")
-        pulsar_client = pulsar_wrapper.create_client(
-            logger, pulsar_config["client"], pulsar_config["oauth2"]
-        )
-        resources["pulsar_client"] = pulsar_client
-        logger.info("Create Pulsar producer")
-        pulsar_producer = pulsar_wrapper.create_producer(
-            pulsar_client, pulsar_config["producer"]
-        )
-        resources["pulsar_producer"] = pulsar_producer
+        if producer_message_data is not None and event_timestamp is not None:
+            # FIXME:
+            # Due to a known issue we close Pulsar before we use
+            # multiprocessing. Once the issue is satisfactorily resolved, do
+            # not close and recreate Pulsar resources here and leave it to the
+            # responsibility of main().
+            # https://github.com/apache/pulsar-client-python/issues/127
+            logger.info("Create Pulsar client")
+            pulsar_client = pulsar_wrapper.create_client(
+                logger, pulsar_config["client"], pulsar_config["oauth2"]
+            )
+            resources["pulsar_client"] = pulsar_client
+            logger.info("Create Pulsar producer")
+            pulsar_producer = pulsar_wrapper.create_producer(
+                pulsar_client, pulsar_config["producer"]
+            )
+            resources["pulsar_producer"] = pulsar_producer
 
-        logger.info("Send the profiles")
-        pulsar_producer.send(
-            producer_message_data, event_timestamp=event_timestamp
-        )
+            logger.info("Send the profiles")
+            pulsar_producer.send(
+                producer_message_data, event_timestamp=event_timestamp
+            )
