@@ -27,7 +27,6 @@ def close_pulsar(resources):
                     },
                 )
                 pulsar_catalogue_reader.close()
-                del pulsar_catalogue_readers[feedPublisherId]
             except Exception as err:
                 logger.error(
                     "Something went wrong when closing Pulsar catalogue"
@@ -36,6 +35,7 @@ def close_pulsar(resources):
                         "json_fields": {"err": traceback.format_exception(err)}
                     },
                 )
+        del resources["pulsar_catalogue_readers"]
     pulsar_cache_reader = resources.get("pulsar_cache_reader")
     if pulsar_cache_reader is not None:
         try:
