@@ -80,7 +80,7 @@ def main():
         except Exception as err:
             exit_handler(1, err)
     except Exception as err:
-        print("Logging failed: " + traceback.format_exception(err))
+        print("Logging failed: " + "".join(traceback.format_exception(err)))
         sys.exit(1)
 
 
