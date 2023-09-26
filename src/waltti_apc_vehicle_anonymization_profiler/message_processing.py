@@ -260,58 +260,43 @@ def get_string_models_to_profiles(logger, directory, tuple_models):
 
 def compute_new_profiles(logger, new_tuple_models):
     new_string_models_to_profiles = {}
-    if len(new_tuple_models) == 0:
-        logger.info("No new vehicle models were found")
-    else:
-        logger.info(
-            "New vehicle models were found",
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        logger.debug(
+            "Create a configuration for profile computation to refer"
+            " to temporary directory",
             extra={
                 "json_fields": {
-                    "newVehicleModels": list(
-                        map(combine_model_tuple_to_string, new_tuple_models)
-                    )
+                    "tmpDir": tmp_dir,
                 }
             },
         )
-        new_string_models_to_profiles = {}
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_dir + "/configuration.yaml"
-            logger.debug(
-                "Create a configuration for profile computation to refer"
-                " to temporary directory",
-                extra={
-                    "json_fields": {
-                        "tmpDir": tmp_dir,
-                    }
-                },
-            )
-            computation_configuration = get_computation_configuration(
-                tmp_dir, new_tuple_models
-            )
-            logger.debug(
-                "Validate computation configuration",
-                extra={
-                    "json_fields": {
-                        "computationConfiguration": computation_configuration,
-                    }
-                },
-            )
-            computation_configuration = (
-                apc_anonymizer.configuration.reinforce_configuration(
-                    computation_configuration
-                )
-            )
-            logger.info(
-                "Create anonymization profiles for the new vehicle models."
-                " This is going to take a while."
-            )
-            hyperparameter_optimization.run_inference_for_all_vehicle_models(
+        computation_configuration = get_computation_configuration(
+            tmp_dir, new_tuple_models
+        )
+        logger.debug(
+            "Validate computation configuration",
+            extra={
+                "json_fields": {
+                    "computationConfiguration": computation_configuration,
+                }
+            },
+        )
+        computation_configuration = (
+            apc_anonymizer.configuration.reinforce_configuration(
                 computation_configuration
             )
-            logger.info("Computing new anonymization profiles has finished")
-            new_string_models_to_profiles = get_string_models_to_profiles(
-                logger, tmp_dir, new_tuple_models
-            )
+        )
+        logger.info(
+            "Create anonymization profiles for the new vehicle models."
+            " This is going to take a while."
+        )
+        hyperparameter_optimization.run_inference_for_all_vehicle_models(
+            computation_configuration
+        )
+        logger.info("Computing new anonymization profiles has finished")
+        new_string_models_to_profiles = get_string_models_to_profiles(
+            logger, tmp_dir, new_tuple_models
+        )
     return new_string_models_to_profiles
 
 
@@ -362,20 +347,40 @@ def generate_message_to_send(
 ):
     producer_message_data = None
     min_event_timestamp = None
+    logger.debug("Reformat the cached vehicle models from strings to tuples")
     cached_tuple_models_to_profiles = {
         split_model_string_to_tuple(k): v
         for k, v in cached_string_models_to_profiles.items()
     }
+    logger.debug(
+        "Map all vehicles from the latest catalogue messages to their vehicle"
+        " models in tuple format. Keep it in one dict."
+    )
     latest_vehicles_to_tuple_models = get_latest_vehicles_to_tuple_models(
         logger, latest_messages
     )
+    logger.debug("See if there are any new vehicle models")
     needed_tuple_models = set(latest_vehicles_to_tuple_models.values())
     cached_tuple_models = set(cached_tuple_models_to_profiles.keys())
     new_tuple_models = needed_tuple_models.difference(cached_tuple_models)
-    if len(new_tuple_models) > 0:
+    if len(new_tuple_models) == 0:
+        logger.info("No new vehicle models were found")
+    else:
+        logger.info(
+            "New vehicle models were found",
+            extra={
+                "json_fields": {
+                    "newVehicleModels": list(
+                        map(combine_model_tuple_to_string, new_tuple_models)
+                    )
+                }
+            },
+        )
+        logger.debug("Compute new anonymization profiles")
         new_string_models_to_profiles = compute_new_profiles(
             logger, new_tuple_models
         )
+        logger.debug("Read the new anonymization profiles")
         needed_string_models_to_profiles = (
             get_needed_string_models_to_profiles(
                 logger,
@@ -433,8 +438,7 @@ def process_messages(
     resources,
 ):
     cached_string_models_to_profiles = {}
-    is_fresh_start = processing_config["is_fresh_start"]
-    if is_fresh_start:
+    if processing_config["is_fresh_start"]:
         logger.info(
             "Skip warming up cache and create all anonymization profiles from"
             " scratch"
@@ -456,6 +460,7 @@ def process_messages(
                 logger, latest_cache_message
             )
 
+    logger.info("Read latest message from each catalogue topic")
     readers = resources["pulsar_catalogue_readers"]
     latest_messages = {
         feed_publisher_id: get_latest_message(reader)
@@ -483,6 +488,10 @@ def process_messages(
         k: v for k, v in latest_messages.items() if v is not None
     }
     if len(latest_nonempty_messages) > 0:
+        logger.info(
+            "At least one message was found from all catalogue topics. Try to"
+            " form a message to send if there is anything new to send."
+        )
         producer_message_data, event_timestamp = generate_message_to_send(
             logger,
             cached_string_models_to_profiles,
