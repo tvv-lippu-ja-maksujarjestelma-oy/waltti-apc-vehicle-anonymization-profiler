@@ -152,9 +152,43 @@ def catalogue_message_jyvaskyla(mocker):
     return message
 
 
-def test_main(mocker, catalogue_message_kuopio, catalogue_message_jyvaskyla):
-    os.environ["PINO_LOG_LEVEL"] = "debug"
+@pytest.fixture()
+def fake_csv_string():
+    return "foo"
 
+
+@pytest.fixture()
+def expected_producer_message_data(fake_csv_string):
+    data = {
+        "schemaVersion": "1-0-0",
+        "vehicleModels": {
+            "fi:jyvaskyla:6714_518": "49-68",
+            "fi:jyvaskyla:6714_521": "49-68",
+            "fi:kuopio:44517_160": "39-38",
+            "fi:kuopio:44517_6": "49-77",
+        },
+        "modelProfiles": {
+            "39-38": fake_csv_string,
+            "49-68": fake_csv_string,
+            "49-77": fake_csv_string,
+        },
+    }
+    return json.dumps(data).encode("utf-8")
+
+
+@pytest.fixture()
+def expected_producer_message_event_timestamp():
+    return 123
+
+
+def test_main(
+    mocker,
+    catalogue_message_kuopio,
+    catalogue_message_jyvaskyla,
+    expected_producer_message_data,
+    expected_producer_message_event_timestamp,
+    fake_csv_string,
+):
     def add_csv_files(config):
         tmp_dir = config["outputDirectory"]
         tmp_path = pathlib.Path(tmp_dir)
@@ -162,33 +196,48 @@ def test_main(mocker, catalogue_message_kuopio, catalogue_message_jyvaskyla):
             for csv_filename in vm["outputFilenames"]:
                 csv_path = tmp_path / csv_filename
                 with pathlib.Path.open(csv_path, "w") as f:
-                    f.write("foo")
+                    f.write(fake_csv_string)
+
+    # Set up configuration. Pulsar configuration will not be used.
+    os.environ["HEALTH_CHECK_SERVER"] = "8080"
+    os.environ["IS_FRESH_START"] = "false"
+    os.environ["PINO_LOG_LEVEL"] = "debug"
+    os.environ["PULSAR_BLOCK_IF_QUEUE_FULL"] = "true"
+    os.environ["PULSAR_CACHE_READER_NAME"] = "foo-cache-reader"
+    os.environ[
+        "PULSAR_CATALOGUE_READERS"
+    ] = """
+    [
+      {
+        "feedPublisherId": "fi:kuopio",
+        "name": "vehicle-anonymization-profiler-catalogue-reader-fi-kuopio",
+        "topic": "persistent://foo/bar/baz-fi-kuopio"
+      }
+    ]
+    """
+    os.environ["PULSAR_COMPRESSION_TYPE"] = "ZSTD"
+    os.environ["PULSAR_OAUTH2_AUDIENCE"] = "urn:sn:pulsar:waltti:alpha"
+    os.environ["PULSAR_OAUTH2_ISSUER_URL"] = "https://foo.bar"
+    os.environ["PULSAR_OAUTH2_KEY_PATH"] = "/secrets/foo-key"
+    os.environ["PULSAR_PRODUCER_TOPIC"] = "persistent://foo/bar/baz"
+    os.environ["PULSAR_SERVICE_URL"] = "pulsar+ssl://foo.bar:6651"
+    os.environ["PULSAR_TLS_VALIDATE_HOSTNAME"] = "true"
 
     mocker.patch(
-        "waltti_apc_vehicle_anonymization_profiler.message_processing.hyperparameter_optimization.run_inference_for_all_vehicle_models",
-        side_effect=add_csv_files,
+        "waltti_apc_vehicle_anonymization_profiler.main.pulsar_wrapper.create_client"
     )
-
-    config = {
-        "health_check": {
-            "port": 8080,
-        },
-        "processing": {
-            "is_fresh_start": False,
-        },
-        "pulsar": {
-            "oauth2": {},
-            "client": {},
-            "producer": {},
-            "cache_reader": {},
-            "catalogue_readers": {"fi:kuopio": {}, "fi:jyvaskyla": {}},
-        },
-    }
+    producer_main_mock = mocker.MagicMock()
     mocker.patch(
-        "waltti_apc_vehicle_anonymization_profiler.main.configuration.read_configuration",
-        return_value=config,
+        "waltti_apc_vehicle_anonymization_profiler.main.pulsar_wrapper.create_producer",
+        return_value=producer_main_mock,
     )
-
+    cache_reader = mocker.MagicMock()
+    cache_reader.has_message_available.return_value = False
+    cache_reader.topic.return_value = "persistent://public/default/cache-topic"
+    mocker.patch(
+        "waltti_apc_vehicle_anonymization_profiler.main.pulsar_wrapper.create_reader",
+        return_value=cache_reader,
+    )
     catalogue_reader_kuopio = mocker.MagicMock()
     catalogue_reader_kuopio.has_message_available.side_effect = [
         True,
@@ -208,25 +257,27 @@ def test_main(mocker, catalogue_message_kuopio, catalogue_message_jyvaskyla):
         "fi:jyvaskyla": catalogue_reader_jyvaskyla,
         "fi:kuopio": catalogue_reader_kuopio,
     }
-    cache_reader = mocker.MagicMock()
-    cache_reader.has_message_available.return_value = False
-    cache_reader.topic.return_value = "persistent://public/default/cache-topic"
-    mocker.patch(
-        "waltti_apc_vehicle_anonymization_profiler.main.pulsar_wrapper.create_client"
-    )
-    producer_main_mock = mocker.MagicMock()
-    mocker.patch(
-        "waltti_apc_vehicle_anonymization_profiler.main.pulsar_wrapper.create_producer",
-        return_value=producer_main_mock,
-    )
-    mocker.patch(
-        "waltti_apc_vehicle_anonymization_profiler.main.pulsar_wrapper.create_reader",
-        return_value=cache_reader,
-    )
     mocker.patch(
         "waltti_apc_vehicle_anonymization_profiler.main.pulsar_wrapper.create_readers",
         return_value=catalogue_readers,
     )
+    mocker.patch(
+        "waltti_apc_vehicle_anonymization_profiler.graceful_exit.close_pulsar"
+    )
+    mocker.patch(
+        "waltti_apc_vehicle_anonymization_profiler.graceful_exit.sys.exit"
+    )
+    mocker.patch(
+        "waltti_apc_vehicle_anonymization_profiler.message_processing.hyperparameter_optimization.run_inference_for_all_vehicle_models",
+        side_effect=add_csv_files,
+    )
+    # FIXME:
+    # Due to a known issue we destroy and create Pulsar resources in
+    # message_processing.py. Once the issue is satisfactorily resolved, pass
+    # just the producer and the readers onwards as usual from main() to
+    # message_processing, remove these mocks and replace mock on which
+    # the assert happens.
+    # https://github.com/apache/pulsar-client-python/issues/127
     producer_mock = mocker.MagicMock()
     mocker.patch(
         "waltti_apc_vehicle_anonymization_profiler.message_processing.pulsar_wrapper.create_producer",
@@ -235,30 +286,10 @@ def test_main(mocker, catalogue_message_kuopio, catalogue_message_jyvaskyla):
     mocker.patch(
         "waltti_apc_vehicle_anonymization_profiler.message_processing.graceful_exit.close_pulsar"
     )
-    mocker.patch(
-        "waltti_apc_vehicle_anonymization_profiler.graceful_exit.close_pulsar"
-    )
-    mocker.patch(
-        "waltti_apc_vehicle_anonymization_profiler.graceful_exit.sys.exit"
-    )
-    expected_producer_message_data = {
-        "schemaVersion": "1-0-0",
-        "vehicleModels": {
-            "fi:jyvaskyla:6714_518": "49-68",
-            "fi:jyvaskyla:6714_521": "49-68",
-            "fi:kuopio:44517_160": "39-38",
-            "fi:kuopio:44517_6": "49-77",
-        },
-        "modelProfiles": {
-            "39-38": "foo",
-            "49-68": "foo",
-            "49-77": "foo",
-        },
-    }
-    expected_producer_message_data_encoded = json.dumps(
-        expected_producer_message_data
-    ).encode("utf-8")
+
     main.main()
+
     producer_mock.send.assert_called_with(
-        expected_producer_message_data_encoded, event_timestamp=123
+        expected_producer_message_data,
+        event_timestamp=expected_producer_message_event_timestamp,
     )
