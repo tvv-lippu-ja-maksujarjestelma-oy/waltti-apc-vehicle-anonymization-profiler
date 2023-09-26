@@ -10,15 +10,15 @@ def map_log_level(log_level_string):
         return logging.NOTSET
     if lowered == "trace":
         return logging.DEBUG
-    elif lowered == "debug":
+    if lowered == "debug":
         return logging.DEBUG
-    elif lowered == "info":
+    if lowered == "info":
         return logging.INFO
-    elif lowered == "warn":
+    if lowered == "warn":
         return logging.WARNING
-    elif lowered == "error":
+    if lowered == "error":
         return logging.ERROR
-    elif lowered == "fatal":
+    if lowered == "fatal":
         return logging.CRITICAL
     msg = (
         'PINO_LOG_LEVEL must be set to either "silent", "trace", "debug",'
