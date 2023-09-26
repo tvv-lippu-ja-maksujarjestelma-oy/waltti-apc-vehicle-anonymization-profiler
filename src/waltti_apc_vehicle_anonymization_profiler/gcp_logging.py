@@ -20,12 +20,12 @@ def map_log_level(log_level_string):
         return logging.ERROR
     elif lowered == "fatal":
         return logging.CRITICAL
-    else:
-        raise ValueError(
-            'PINO_LOG_LEVEL must be set to either "silent", "trace", "debug",'
-            ' "info", "warn", "error" or "fatal". Instead,'
-            f' "{log_level_string}" was given.'
-        )
+    msg = (
+        'PINO_LOG_LEVEL must be set to either "silent", "trace", "debug",'
+        ' "info", "warn", "error" or "fatal". Instead,'
+        f' "{log_level_string}" was given.'
+    )
+    raise ValueError(msg)
 
 
 def get_log_level():

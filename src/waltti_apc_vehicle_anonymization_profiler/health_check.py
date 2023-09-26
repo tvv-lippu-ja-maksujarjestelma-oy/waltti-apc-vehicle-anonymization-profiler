@@ -47,7 +47,8 @@ def create_health_check_server(health_check_config):
             else:
                 is_healthy_event.clear()
         else:
-            raise ValueError("is_healthy must be a boolean value")
+            msg = "is_healthy must be a boolean value"
+            raise TypeError(msg)
 
     process = multiprocessing.Process(target=run_app)
     process.start()

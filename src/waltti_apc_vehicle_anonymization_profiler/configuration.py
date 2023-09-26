@@ -14,10 +14,11 @@ def get_optional_int_with_default(env_var, default):
         try:
             value = int(string)
         except ValueError as err:
-            raise ValueError(
+            msg = (
                 f"If given, the environment variable {env_var} must be an"
                 f" integer. Instead, this was given: {string}"
-            ) from err
+            )
+            raise ValueError(msg) from err
     return value
 
 
@@ -28,11 +29,12 @@ def get_optional_bool_with_default(env_var, default):
         is_true = string.lower() == "true"
         is_false = string.lower() == "false"
         if not is_true and not is_false:
-            raise ValueError(
+            msg = (
                 f"If given, the environment variable {env_var} must be a"
                 " boolean, either true or false. Instead, this was given:"
                 f" {string}"
             )
+            raise ValueError(msg)
         value = is_true
     return value
 
@@ -40,7 +42,8 @@ def get_optional_bool_with_default(env_var, default):
 def get_string(env_var):
     string = os.getenv(env_var)
     if string is None:
-        raise ValueError(f"The environment variable {env_var} must be given")
+        msg = f"The environment variable {env_var} must be given"
+        raise ValueError(msg)
     return string
 
 
@@ -54,10 +57,11 @@ def get_optional_string_with_default(env_var, default):
 def get_health_check_port(env_var):
     port = get_optional_int_with_default(env_var, 8080)
     if port is not None and (port < 1 or port > 65535):
-        raise ValueError(
+        msg = (
             f"If given, the environment variable {env_var} must be a port"
             " number in the inclusive range [1, 65535]"
         )
+        raise ValueError(msg)
     return port
 
 
@@ -75,18 +79,19 @@ def get_pulsar_compression_type(env_var, default):
         return pulsar.CompressionType.ZSTD
     if string == "SNAPPY":
         return pulsar.CompressionType.SNAPPY
-    else:
-        raise ValueError(
-            f"If given, the environment variable {env_var} must be set to"
-            ' either "NONE", "LZ4", "ZLib", "ZSTD" or "SNAPPY". Instead, this'
-            f" was given: {string}"
-        )
+    msg = (
+        f"If given, the environment variable {env_var} must be set to either"
+        ' "NONE", "LZ4", "ZLib", "ZSTD" or "SNAPPY". Instead, this was given:'
+        f" {string}"
+    )
+    raise ValueError(msg)
 
 
 def get_pulsar_catalogue_readers(env_var):
     string = os.getenv(env_var)
     if string is None:
-        raise ValueError(f"The environment variable {env_var} is required")
+        msg = f"The environment variable {env_var} is required"
+        raise ValueError(msg)
     try:
         lists = json.loads(string)
         return {
@@ -98,12 +103,12 @@ def get_pulsar_catalogue_readers(env_var):
             for reader_spec in lists
         }
     except Exception as err:
-        raise ValueError(
-            f"The environment variable {env_var} must be a JSON"
-            " stringified list of objects where each object has keys"
-            ' "feedPublisherId", "topic" and "name". Instead, this was given:'
-            f" {string}"
-        ) from err
+        msg = (
+            f"The environment variable {env_var} must be a JSON stringified"
+            ' list of objects where each object has keys "feedPublisherId",'
+            f' "topic" and "name". Instead, this was given: {string}'
+        )
+        raise ValueError(msg) from err
 
 
 def read_configuration(logger):
