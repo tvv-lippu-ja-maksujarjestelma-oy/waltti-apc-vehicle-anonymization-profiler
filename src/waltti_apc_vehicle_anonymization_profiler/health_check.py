@@ -1,5 +1,9 @@
 """A simple HTTP health check server."""
 
+# By choice we bind to all interfaces and avoid adding another environment
+# variable.
+# ruff: noqa: S104
+
 import multiprocessing
 
 import flask

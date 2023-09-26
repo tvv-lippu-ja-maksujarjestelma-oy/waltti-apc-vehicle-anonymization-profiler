@@ -1,3 +1,8 @@
+"""Graceful exit."""
+
+# We wish to log each problematic catalogue reader separately.
+# ruff: noqa: PERF203
+
 import functools
 import signal
 import sys
