@@ -219,7 +219,7 @@ def get_latest_vehicles_to_tuple_models(logger, messages):
                 "vehiclesWithApcSizes": {
                     f: len(v) for f, v in vehicles_with_apc.items()
                 },
-                "vehicleToTupleModels": vehicles_with_apc.items(),
+                "vehicleToTupleModels": vehicles_with_apc,
                 "mergedVehicleToTupleModels": merged_vehicles_to_tuple_models,
             }
         },
