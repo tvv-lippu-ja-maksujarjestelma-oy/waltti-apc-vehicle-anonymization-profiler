@@ -4,6 +4,7 @@
 # variable.
 # ruff: noqa: S104
 
+import logging
 import multiprocessing
 
 import flask
@@ -29,6 +30,10 @@ def create_health_check_server(health_check_config):
 
     def run_app():
         graceful_exit.reset_signal_handlers()
+        # Silence werkzeug logging every request if we use logging.DEBUG
+        # elsewhere.
+        logger = logging.getLogger("werkzeug")
+        logger.setLevel(logging.ERROR)
         server = werkzeug.serving.make_server(
             host="0.0.0.0",
             port=health_check_config["port"],
