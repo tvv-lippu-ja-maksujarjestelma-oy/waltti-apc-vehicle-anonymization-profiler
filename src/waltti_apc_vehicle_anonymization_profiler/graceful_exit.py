@@ -21,14 +21,14 @@ def close_pulsar(resources):
     pulsar_catalogue_readers = resources.get("pulsar_catalogue_readers")
     if pulsar_catalogue_readers is not None:
         for (
-            feedPublisherId,
+            feed_publisher_id,
             pulsar_catalogue_reader,
         ) in pulsar_catalogue_readers.items():
             try:
                 logger.info(
                     "Close Pulsar catalogue reader",
                     extra={
-                        "json_fields": {"feedPublisherId": feedPublisherId}
+                        "json_fields": {"feedPublisherId": feed_publisher_id}
                     },
                 )
                 pulsar_catalogue_reader.close()
