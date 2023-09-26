@@ -7,13 +7,13 @@ from waltti_apc_vehicle_anonymization_profiler import health_check
 
 @pytest.fixture(scope="module")
 def port():
-    yield 8080
+    return 8080
 
 
 @pytest.fixture(scope="module")
 def url(port):
     host = "127.0.0.1"
-    yield f"http://{host}:{port}/healthz"
+    return f"http://{host}:{port}/healthz"
 
 
 @pytest.fixture()
