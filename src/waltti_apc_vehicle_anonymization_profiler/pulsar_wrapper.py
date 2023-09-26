@@ -9,7 +9,7 @@ def create_client(
     logger, client_config, oauth2_config, log_level=logging.INFO
 ):
     # Pulsar is too chatty on level logging.DEBUG.
-    pulsar_logger = logger.getChild()
+    pulsar_logger = logger.getChild("pulsar")
     pulsar_logger.setLevel(log_level)
     combined_config = client_config | {
         "authentication": pulsar.AuthenticationOauth2(
