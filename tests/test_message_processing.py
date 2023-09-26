@@ -2,6 +2,7 @@ import json
 import logging
 import pathlib
 
+import pytest
 from waltti_apc_vehicle_anonymization_profiler import message_processing
 
 
@@ -91,21 +92,8 @@ def test_transform_capacity_to_minimum_counts_five_and_five():
     assert output == expected_output
 
 
-def test_process_messages(mocker):
-    def add_csv_files(config):
-        tmp_dir = config["outputDirectory"]
-        tmp_path = pathlib.Path(tmp_dir)
-        for vm in config["vehicleModels"]:
-            for csv_filename in vm["outputFilenames"]:
-                csv_path = tmp_path / csv_filename
-                with open(csv_path, "w") as f:
-                    f.write("foo")
-
-    mocker.patch(
-        "waltti_apc_vehicle_anonymization_profiler.message_processing.hyperparameter_optimization.run_inference_for_all_vehicle_models",
-        side_effect=add_csv_files,
-    )
-
+@pytest.fixture()
+def logger():
     logging.basicConfig(
         datefmt="%Y-%m-%d %H:%M:%S",
         level=logging.DEBUG,
@@ -114,9 +102,13 @@ def test_process_messages(mocker):
             " %(funcName)s: %(message)s"
         ),
     )
-    logger = logging.getLogger()
+    return logging.getLogger()
 
-    catalogue_data_kuopio = [
+
+@pytest.fixture()
+def catalogue_message_kuopio(mocker):
+    message = mocker.MagicMock()
+    data = [
         {
             "operatorId": "44517",
             "vehicleShortName": "1",
@@ -178,27 +170,26 @@ def test_process_messages(mocker):
             "equipment": [{"type": "LOCATION_PRODUCER", "id": "130951"}],
         },
     ]
-    event_timestamp_kuopio = 123
-    catalogue_message_stub_kuopio = mocker.MagicMock()
-    catalogue_message_stub_kuopio.data.return_value = json.dumps(
-        catalogue_data_kuopio
-    ).encode("utf-8")
-    catalogue_message_stub_kuopio.event_timestamp.return_value = (
-        event_timestamp_kuopio
-    )
-    catalogue_message_stub_kuopio.topic_name.return_value = (
+    message.data.return_value = json.dumps(data).encode("utf-8")
+    message.event_timestamp.return_value = 123
+    message.topic_name.return_value = (
         "persistent://public/default/catalogue-fi-kuopio"
     )
-    catalogue_reader_mock_kuopio = mocker.MagicMock()
-    catalogue_reader_mock_kuopio.has_message_available.side_effect = [
-        True,
-        False,
-    ]
-    catalogue_reader_mock_kuopio.read_next.return_value = (
-        catalogue_message_stub_kuopio
-    )
+    return message
 
-    catalogue_data_jyvaskyla = [
+
+@pytest.fixture()
+def catalogue_message_jyvaskyla(mocker):
+    message = mocker.MagicMock()
+    data = [
+        {
+            "operatorId": "6714",
+            "vehicleShortName": "123",
+            "vehicleRegistrationNumber": "FOO-000",
+            "standingCapacity": 1,
+            "seatingCapacity": 2,
+            "equipment": [{"type": "LOCATION_PRODUCER", "id": "NIX"}],
+        },
         {
             "operatorId": "6714",
             "vehicleShortName": "518",
@@ -238,42 +229,76 @@ def test_process_messages(mocker):
             ],
         },
     ]
-    event_timestamp_jyvaskyla = 234
-    catalogue_message_stub_jyvaskyla = mocker.MagicMock()
-    catalogue_message_stub_jyvaskyla.data.return_value = json.dumps(
-        catalogue_data_jyvaskyla
-    ).encode("utf-8")
-    catalogue_message_stub_jyvaskyla.event_timestamp.return_value = (
-        event_timestamp_jyvaskyla
-    )
-    catalogue_message_stub_jyvaskyla.topic_name.return_value = (
+    message.data.return_value = json.dumps(data).encode("utf-8")
+    message.event_timestamp.return_value = 234
+    message.topic_name.return_value = (
         "persistent://public/default/catalogue-fi-jyvaskyla"
     )
-    catalogue_reader_mock_jyvaskyla = mocker.MagicMock()
-    catalogue_reader_mock_jyvaskyla.has_message_available.side_effect = [
+    return message
+
+
+def test_get_latest_vehicles_to_tuple_models(
+    logger, catalogue_message_kuopio, catalogue_message_jyvaskyla
+):
+    messages = {
+        "fi:jyvaskyla": catalogue_message_jyvaskyla,
+        "fi:kuopio": catalogue_message_kuopio,
+    }
+    expected_output = {
+        "fi:jyvaskyla:6714_518": (49, 68),
+        "fi:jyvaskyla:6714_521": (49, 68),
+        "fi:kuopio:44517_160": (39, 38),
+        "fi:kuopio:44517_6": (49, 77),
+    }
+    output = message_processing.get_latest_vehicles_to_tuple_models(
+        logger, messages
+    )
+    assert output == expected_output
+
+
+def test_process_messages(
+    mocker, logger, catalogue_message_kuopio, catalogue_message_jyvaskyla
+):
+    def add_csv_files(config):
+        tmp_dir = config["outputDirectory"]
+        tmp_path = pathlib.Path(tmp_dir)
+        for vm in config["vehicleModels"]:
+            for csv_filename in vm["outputFilenames"]:
+                csv_path = tmp_path / csv_filename
+                with pathlib.Path.open(csv_path, "w") as f:
+                    f.write("foo")
+
+    mocker.patch(
+        "waltti_apc_vehicle_anonymization_profiler.message_processing.hyperparameter_optimization.run_inference_for_all_vehicle_models",
+        side_effect=add_csv_files,
+    )
+
+    catalogue_reader_kuopio = mocker.MagicMock()
+    catalogue_reader_kuopio.has_message_available.side_effect = [
         True,
         False,
     ]
-    catalogue_reader_mock_jyvaskyla.read_next.return_value = (
-        catalogue_message_stub_jyvaskyla
-    )
+    catalogue_reader_kuopio.read_next.return_value = catalogue_message_kuopio
 
+    catalogue_reader_jyvaskyla = mocker.MagicMock()
+    catalogue_reader_jyvaskyla.has_message_available.side_effect = [
+        True,
+        False,
+    ]
+    catalogue_reader_jyvaskyla.read_next.return_value = (
+        catalogue_message_jyvaskyla
+    )
     catalogue_readers = {
-        "fi:jyvaskyla": catalogue_reader_mock_jyvaskyla,
-        "fi:kuopio": catalogue_reader_mock_kuopio,
+        "fi:jyvaskyla": catalogue_reader_jyvaskyla,
+        "fi:kuopio": catalogue_reader_kuopio,
     }
-    cache_reader_mock = mocker.MagicMock()
-    cache_reader_mock.has_message_available.return_value = False
+    cache_reader = mocker.MagicMock()
+    cache_reader.has_message_available.return_value = False
     resources = {
-        "pulsar_cache_reader": cache_reader_mock,
+        "pulsar_cache_reader": cache_reader,
         "pulsar_catalogue_readers": catalogue_readers,
     }
-    processing_config = {
-        "is_fresh_start": False,
-        "feed_map": {
-            "persistent://public/default/catalogue-fi-kuopio": "fi:kuopio"
-        },
-    }
+    processing_config = {"is_fresh_start": False}
     pulsar_config = {"client": {}, "oauth2": {}, "producer": {}}
     mocker.patch(
         "waltti_apc_vehicle_anonymization_profiler.message_processing.pulsar_wrapper.create_client"
@@ -307,6 +332,5 @@ def test_process_messages(mocker):
         logger, processing_config, pulsar_config, resources
     )
     producer_mock.send.assert_called_with(
-        expected_producer_message_data_encoded,
-        event_timestamp=min(event_timestamp_kuopio, event_timestamp_jyvaskyla),
+        expected_producer_message_data_encoded, event_timestamp=123
     )
