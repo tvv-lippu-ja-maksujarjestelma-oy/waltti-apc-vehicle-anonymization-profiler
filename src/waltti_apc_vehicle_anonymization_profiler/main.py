@@ -23,7 +23,7 @@ def main():
             exit_handler = graceful_exit.get_exit_handler(resources)
             logger.info(f"Start service {service_name}")
             logger.info("Read configuration")
-            config = configuration.read_configuration(logger)
+            config = configuration.read_configuration()
             logger.info("Create health check server")
             health_check_server = health_check.create_health_check_server(
                 config["health_check"]

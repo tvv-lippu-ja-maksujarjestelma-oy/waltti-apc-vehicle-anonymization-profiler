@@ -111,7 +111,7 @@ def get_pulsar_catalogue_readers(env_var):
         raise ValueError(msg) from err
 
 
-def read_configuration(logger):
+def read_configuration():
     health_check_port = get_health_check_port("HEALTH_CHECK_PORT")
     is_fresh_start = get_optional_bool_with_default("IS_FRESH_START", False)
     pulsar_block_if_queue_full = get_optional_bool_with_default(
