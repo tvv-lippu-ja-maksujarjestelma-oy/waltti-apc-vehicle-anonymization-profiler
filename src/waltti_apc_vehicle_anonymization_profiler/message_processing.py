@@ -24,23 +24,22 @@ def get_latest_message(reader):
     return message
 
 
-def validate_message_data(logger, validator, message):
+def validate_and_return_message_data(logger, validator, message):
     result = None
     try:
         message_data = message.data()
-        message_data_string = message_data.decode(
-            encoding="utf-8", errors="replace"
-        )
-        unchecked = json.loads(message_data)
-        validator.validate(unchecked)
-        result = unchecked
+        to_be_validated = json.loads(message_data)
+        validator.validate(to_be_validated)
+        result = to_be_validated
     except json.JSONDecodeError as err:
         logger.error(
             "The Pulsar message data is not valid JSON",
             extra={
                 "json_fields": {
                     "err": traceback.format_exception(err),
-                    "messageDataString": message_data_string,
+                    "messageDataString": message_data.decode(
+                        encoding="utf-8", errors="replace"
+                    ),
                     "properties": message.properties(),
                     "messageEventTimestamp": message.event_timestamp(),
                 }
@@ -53,7 +52,7 @@ def validate_message_data(logger, validator, message):
             extra={
                 "json_fields": {
                     "err": traceback.format_exception(err),
-                    "messageData": unchecked,
+                    "messageData": to_be_validated,
                     "properties": message.properties(),
                     "messageEventTimestamp": message.event_timestamp(),
                 }
@@ -83,50 +82,28 @@ def combine_model_tuple_to_string(model_tuple):
 
 def build_cache(logger, message):
     validator = validators.get_profile_collection_validator()
-    vehicle_profiles = validate_message_data(logger, validator, message)
-    cache = vehicle_profiles["modelProfiles"]
-    return cache
+    vehicle_profiles = validate_and_return_message_data(
+        logger, validator, message
+    )
+    return vehicle_profiles["modelProfiles"]
 
 
 def get_vehicle_string(vehicle):
     return vehicle["operatorId"] + "_" + vehicle["vehicleShortName"]
 
 
-def get_vehicles_to_tuple_models(logger, feed_publisher_id, vehicle_catalogue):
-    vehicles_to_models = {}
-    for vehicle in vehicle_catalogue:
-        seating_capacity = vehicle.get("seatingCapacity")
-        standing_capacity = vehicle.get("standingCapacity")
-        if (seating_capacity is None) or (standing_capacity is None):
-            logger.error(
-                "The vehicle does not have seatingCapacity or standingCapacity"
-                " defined so no anonymization profile can be created for it."
-                " If either value should be zero, mark it explicitly so in the"
-                " vehicle registry.",
-                extra={
-                    "json_fields": {
-                        "vehicle": vehicle,
-                        "feedPublisherId": feed_publisher_id,
-                    }
-                },
-            )
-        else:
-            vehicles_to_models[
-                feed_publisher_id + ":" + get_vehicle_string(vehicle)
-            ] = (
-                seating_capacity,
-                standing_capacity,
-            )
-    return vehicles_to_models
-
-
-def get_latest_vehicles_to_tuple_models(logger, messages):
+def validate_and_return_vehicle_apc_mapping_messages(logger, messages):
     validator = validators.get_vehicle_apc_mapping_validator()
-    vehicle_apc_mappings = {
-        feed_publisher_id: validate_message_data(logger, validator, message)
+    return {
+        feed_publisher_id: validate_and_return_message_data(
+            logger, validator, message
+        )
         for feed_publisher_id, message in messages.items()
     }
-    all_vehicles = {
+
+
+def keep_only_vehicles_with_apc(vehicle_apc_mappings):
+    return {
         feed_publisher_id: [
             vehicle
             for vehicle in vehicle_apc
@@ -137,6 +114,9 @@ def get_latest_vehicles_to_tuple_models(logger, messages):
         ]
         for feed_publisher_id, vehicle_apc in vehicle_apc_mappings.items()
     }
+
+
+def log_if_multiple_apc_devices(logger, all_vehicles, messages):
     all_vehicles_with_multiple_apc = {
         feed_publisher_id: sorted(
             [
@@ -173,14 +153,78 @@ def get_latest_vehicles_to_tuple_models(logger, messages):
                     }
                 },
             )
-    all_vehicles_to_tuple_models = [
+
+
+def get_vehicles_to_tuple_models(logger, feed_publisher_id, vehicle_catalogue):
+    vehicles_to_tuple_models = {}
+    for vehicle in vehicle_catalogue:
+        seating_capacity = vehicle.get("seatingCapacity")
+        standing_capacity = vehicle.get("standingCapacity")
+        if (seating_capacity is None) or (standing_capacity is None):
+            logger.error(
+                "The vehicle does not have seatingCapacity or standingCapacity"
+                " defined so no anonymization profile can be created for it."
+                " If either value should be zero, mark it explicitly so in the"
+                " vehicle registry.",
+                extra={
+                    "json_fields": {
+                        "vehicle": vehicle,
+                        "feedPublisherId": feed_publisher_id,
+                    }
+                },
+            )
+        else:
+            vehicles_to_tuple_models[
+                feed_publisher_id + ":" + get_vehicle_string(vehicle)
+            ] = (
+                seating_capacity,
+                standing_capacity,
+            )
+    return vehicles_to_tuple_models
+
+
+def extract_vehicles_to_tuple_models(logger, all_vehicles):
+    return [
         get_vehicles_to_tuple_models(logger, feed_publisher_id, vehicles)
         for feed_publisher_id, vehicles in all_vehicles.items()
     ]
-    vehicles_to_tuple_models = {}
-    for d in all_vehicles_to_tuple_models:
-        vehicles_to_tuple_models.update(d)
-    return vehicles_to_tuple_models
+
+
+def merge_list_of_dicts(list_of_dicts):
+    result = {}
+    for d in list_of_dicts:
+        result.update(d)
+    return result
+
+
+def get_latest_vehicles_to_tuple_models(logger, messages):
+    vehicle_apc_mappings = validate_and_return_vehicle_apc_mapping_messages(
+        logger, messages
+    )
+    vehicles_with_apc = keep_only_vehicles_with_apc(vehicle_apc_mappings)
+    log_if_multiple_apc_devices(logger, vehicles_with_apc, messages)
+    vehicles_to_tuple_models = extract_vehicles_to_tuple_models(
+        logger, vehicles_with_apc
+    )
+    merged_vehicles_to_tuple_models = merge_list_of_dicts(
+        vehicles_to_tuple_models
+    )
+    logger.debug(
+        "Got latest vehicle-to-vehicle-model mappings",
+        extra={
+            "json_fields": {
+                "vehicleApcMappingSizes": {
+                    f: len(v) for f, v in vehicle_apc_mappings.items()
+                },
+                "vehiclesWithApcSizes": {
+                    f: len(v) for f, v in vehicles_with_apc.items()
+                },
+                "vehicleToTupleModels": vehicles_with_apc.items(),
+                "mergedVehicleToTupleModels": merged_vehicles_to_tuple_models,
+            }
+        },
+    )
+    return merged_vehicles_to_tuple_models
 
 
 def transform_capacity_to_minimum_counts(seating_capacity, standing_capacity):
@@ -359,9 +403,21 @@ def generate_message_to_send(
     latest_vehicles_to_tuple_models = get_latest_vehicles_to_tuple_models(
         logger, latest_messages
     )
-    logger.debug("See if there are any new vehicle models")
     needed_tuple_models = set(latest_vehicles_to_tuple_models.values())
     cached_tuple_models = set(cached_tuple_models_to_profiles.keys())
+    logger.debug(
+        "See if there are any new vehicle models",
+        extra={
+            "json_fields": {
+                "neededTupleModels": list(
+                    map(combine_model_tuple_to_string, needed_tuple_models)
+                ),
+                "cachedTupleModels": list(
+                    map(combine_model_tuple_to_string, cached_tuple_models)
+                ),
+            }
+        },
+    )
     new_tuple_models = needed_tuple_models.difference(cached_tuple_models)
     if len(new_tuple_models) == 0:
         logger.info("No new vehicle models were found")
@@ -489,8 +545,8 @@ def process_messages(
     }
     if len(latest_nonempty_messages) > 0:
         logger.info(
-            "At least one message was found from all catalogue topics. Try to"
-            " form a message to send if there is anything new to send."
+            "At least one message was found when reading all the catalogue"
+            " topics. Try to form a message if there is anything new to send."
         )
         producer_message_data, event_timestamp = generate_message_to_send(
             logger,
