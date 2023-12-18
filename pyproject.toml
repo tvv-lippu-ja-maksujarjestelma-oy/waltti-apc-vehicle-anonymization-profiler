@@ -23,7 +23,7 @@ black = "^23.7.0"
 pytest = "^7.4.0"
 pytest-mock = "^3.10.0"
 requests = "^2.31.0"
-ruff = "^0.0.291"
+ruff = "^0.1.8"
 
 [build-system]
 requires = ["poetry-core"]
