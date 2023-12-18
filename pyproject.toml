@@ -12,7 +12,7 @@ packages = [{include = "waltti_apc_vehicle_anonymization_profiler", from = "src"
 # As the library is used only here, use the master branch directly.
 apc-anonymizer = {git = "https://github.com/tvv-lippu-ja-maksujarjestelma-oy/waltti-apc-vehicle-anonymization-profiler-library.git"}
 flask = "^2.3.3"
-google-cloud-logging = "^3.6.0"
+google-cloud-logging = "^3.9.0"
 jsonschema = "^4.19.0"
 pulsar-client = "^3.3.0"
 python = "^3.10"
