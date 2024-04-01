@@ -14,7 +14,7 @@ apc-anonymizer = {git = "https://github.com/tvv-lippu-ja-maksujarjestelma-oy/wal
 flask = "^2.3.3"
 google-cloud-logging = "^3.6.0"
 jsonschema = "^4.19.0"
-pulsar-client = "^3.3.0"
+pulsar-client = "^3.4.0"
 python = "^3.10"
 pyyaml = "^6.0.1"
 
