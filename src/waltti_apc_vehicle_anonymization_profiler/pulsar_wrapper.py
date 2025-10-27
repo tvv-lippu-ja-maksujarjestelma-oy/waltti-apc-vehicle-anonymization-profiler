@@ -14,18 +14,17 @@ def create_client(
     # Pulsar is too chatty on level logging.DEBUG.
     pulsar_logger = logger.getChild("pulsar")
     pulsar_logger.setLevel(log_level)
-    auth_config = (
-        {
+    if oauth2_config is not None:
+        auth_config = {
             "authentication": pulsar.AuthenticationOauth2(
                 json.dumps(oauth2_config)
             )
         }
-        if oauth2_config is not None
-        else {}
+    else:
+        auth_config = {}
+    combined_config = (
+        client_config | auth_config | {"logger": pulsar_logger}
     )
-    combined_config = client_config | auth_config | {
-        "logger": pulsar_logger,
-    }
     return pulsar.Client(**combined_config)
 
 
