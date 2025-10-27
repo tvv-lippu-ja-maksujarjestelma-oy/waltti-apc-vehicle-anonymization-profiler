@@ -22,9 +22,7 @@ def create_client(
         }
     else:
         auth_config = {}
-    combined_config = (
-        client_config | auth_config | {"logger": pulsar_logger}
-    )
+    combined_config = client_config | auth_config | {"logger": pulsar_logger}
     return pulsar.Client(**combined_config)
 
 
