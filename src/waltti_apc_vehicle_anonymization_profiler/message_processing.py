@@ -562,7 +562,7 @@ def process_messages(
             # https://github.com/apache/pulsar-client-python/issues/127
             logger.info("Create Pulsar client")
             pulsar_client = pulsar_wrapper.create_client(
-                logger, pulsar_config["client"], pulsar_config["oauth2"]
+                logger, pulsar_config["client"], pulsar_config.get("oauth2")
             )
             resources["pulsar_client"] = pulsar_client
             logger.info("Create Pulsar producer")
