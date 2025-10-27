@@ -36,7 +36,9 @@ def main():
             resources["set_health_ok"] = set_health_ok
             logger.info("Create Pulsar client")
             pulsar_client = pulsar_wrapper.create_client(
-                logger, config["pulsar"]["client"], config["pulsar"].get("oauth2")
+                logger,
+                config["pulsar"]["client"],
+                config["pulsar"].get("oauth2"),
             )
             resources["pulsar_client"] = pulsar_client
             logger.info("Create Pulsar producer")
