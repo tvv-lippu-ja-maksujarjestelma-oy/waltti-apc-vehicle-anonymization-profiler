@@ -21,9 +21,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Install Node
+      - name: Set up Python 3.11
         uses: actions/setup-python@v4
         with:
+          python-version: '3.11'
           # We use pip and poetry. poetry has a larger list of dependencies.
           cache: "poetry"
       - name: Install tool dependencies
