@@ -124,14 +124,42 @@ def read_configuration():
     pulsar_compression_type = get_pulsar_compression_type(
         "PULSAR_COMPRESSION_TYPE", pulsar.CompressionType.ZSTD
     )
-    pulsar_oauth2_audience = get_string("PULSAR_OAUTH2_AUDIENCE")
-    pulsar_oauth2_issuer_url = get_string("PULSAR_OAUTH2_ISSUER_URL")
-    pulsar_oauth2_private_key = get_string("PULSAR_OAUTH2_KEY_PATH")
+    # OAuth2 can be entirely omitted. If any are set, all three are required.
+    pulsar_oauth2_audience = os.getenv("PULSAR_OAUTH2_AUDIENCE")
+    pulsar_oauth2_issuer_url = os.getenv("PULSAR_OAUTH2_ISSUER_URL")
+    pulsar_oauth2_private_key = os.getenv("PULSAR_OAUTH2_KEY_PATH")
     pulsar_producer_topic = get_string("PULSAR_PRODUCER_TOPIC")
     pulsar_service_url = get_string("PULSAR_SERVICE_URL")
     pulsar_tls_validate_hostname = get_optional_bool_with_default(
         "PULSAR_TLS_VALIDATE_HOSTNAME", True
     )
+    # Build optional oauth2 config with all-or-nothing validation
+    any_oauth2 = any(
+        v is not None
+        for v in (
+            pulsar_oauth2_audience,
+            pulsar_oauth2_issuer_url,
+            pulsar_oauth2_private_key,
+        )
+    )
+    oauth2_config = None
+    if any_oauth2:
+        if (
+            not pulsar_oauth2_audience
+            or not pulsar_oauth2_issuer_url
+            or not pulsar_oauth2_private_key
+        ):
+            msg = (
+                "If any of PULSAR_OAUTH2_ISSUER_URL, PULSAR_OAUTH2_KEY_PATH, "
+                "PULSAR_OAUTH2_AUDIENCE is defined, all must be defined."
+            )
+            raise ValueError(msg)
+        oauth2_config = {
+            "audience": pulsar_oauth2_audience,
+            "issuer_url": pulsar_oauth2_issuer_url,
+            "private_key": pulsar_oauth2_private_key,
+        }
+
     return {
         "health_check": {
             "port": health_check_port,
@@ -140,11 +168,8 @@ def read_configuration():
             "is_fresh_start": is_fresh_start,
         },
         "pulsar": {
-            "oauth2": {
-                "audience": pulsar_oauth2_audience,
-                "issuer_url": pulsar_oauth2_issuer_url,
-                "private_key": pulsar_oauth2_private_key,
-            },
+            # Only include oauth2 key when present
+            **({"oauth2": oauth2_config} if oauth2_config is not None else {}),
             "client": {
                 "service_url": pulsar_service_url,
                 "use_tls": True,
