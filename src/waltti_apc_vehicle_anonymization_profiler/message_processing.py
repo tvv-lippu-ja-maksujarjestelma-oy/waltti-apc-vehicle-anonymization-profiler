@@ -536,7 +536,7 @@ def process_messages(
                 extra={
                     "json_fields": {
                         "feedPublisherId": feed_publisher_id,
-                        "topic": readers[feed_publisher_id]["topic"],
+                        "topic": readers[feed_publisher_id].topic(),
                     }
                 },
             )
