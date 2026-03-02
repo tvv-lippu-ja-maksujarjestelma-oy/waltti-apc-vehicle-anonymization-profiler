@@ -72,6 +72,25 @@ def validate_and_return_message_data(logger, validator, message):
     return result
 
 
+def sanitize_vehicle_apc_mapping_payload(payload):
+    """Normalize vehicle APC mappings before schema validation.
+
+    Upstream may send empty strings for optional fields such as
+    vehicleRegistrationNumber. Treat empty registration numbers as missing so
+    the payload can still be validated and used.
+    """
+    if not isinstance(payload, list):
+        return payload
+    result = []
+    for item in payload:
+        if isinstance(item, dict):
+            item = dict(item)
+            if item.get("vehicleRegistrationNumber") == "":
+                item.pop("vehicleRegistrationNumber", None)
+        result.append(item)
+    return result
+
+
 def split_model_string_to_tuple(model_string):
     return tuple(map(int, model_string.split(sep="-", maxsplit=1)))
 
@@ -94,12 +113,48 @@ def get_vehicle_string(vehicle):
 
 def validate_and_return_vehicle_apc_mapping_messages(logger, messages):
     validator = validators.get_vehicle_apc_mapping_validator()
-    return {
-        feed_publisher_id: validate_and_return_message_data(
-            logger, validator, message
-        )
-        for feed_publisher_id, message in messages.items()
-    }
+    validated_messages = {}
+    for feed_publisher_id, message in messages.items():
+        message_data = message.data()
+        try:
+            decoded = json.loads(message_data)
+        except json.JSONDecodeError as err:
+            logger.error(
+                "The Pulsar message data is not valid JSON",
+                extra={
+                    "json_fields": {
+                        "err": traceback.format_exception(err),
+                        "messageDataString": message_data.decode(
+                            encoding="utf-8", errors="replace"
+                        ),
+                        "properties": message.properties(),
+                        "messageEventTimestamp": message.event_timestamp(),
+                        "feedPublisherId": feed_publisher_id,
+                    }
+                },
+            )
+            continue
+
+        validated = sanitize_vehicle_apc_mapping_payload(decoded)
+        try:
+            validator.validate(validated)
+        except jsonschema.ValidationError as err:
+            logger.error(
+                "Vehicle catalogue message does not validate after"
+                " sanitization. Skipping this feed publisher for now.",
+                extra={
+                    "json_fields": {
+                        "err": traceback.format_exception(err),
+                        "messageData": validated,
+                        "feedPublisherId": feed_publisher_id,
+                        "topic": message.topic_name(),
+                        "messageEventTimestamp": message.event_timestamp(),
+                    }
+                },
+            )
+            continue
+        validated_messages[feed_publisher_id] = validated
+    return validated_messages
 
 
 def keep_only_vehicles_with_apc(vehicle_apc_mappings):
@@ -202,6 +257,12 @@ def get_latest_vehicles_to_tuple_models(logger, messages):
         logger, messages
     )
     vehicles_with_apc = keep_only_vehicles_with_apc(vehicle_apc_mappings)
+    if len(vehicles_with_apc) == 0:
+        logger.warning(
+            "No valid vehicle catalogue messages available after validation."
+            " Skip profile update for now."
+        )
+        return {}
     log_if_multiple_apc_devices(logger, vehicles_with_apc, messages)
     vehicles_to_tuple_models = extract_vehicles_to_tuple_models(
         logger, vehicles_with_apc
@@ -418,7 +479,14 @@ def generate_message_to_send(
             }
         },
     )
+    if len(latest_vehicles_to_tuple_models) == 0:
+        logger.warning(
+            "No vehicles with APC found from latest valid catalogue data"
+        )
+        return producer_message_data, min_event_timestamp
+
     new_tuple_models = needed_tuple_models.difference(cached_tuple_models)
+    new_string_models_to_profiles = {}
     if len(new_tuple_models) == 0:
         logger.info("No new vehicle models were found")
     else:
@@ -436,54 +504,80 @@ def generate_message_to_send(
         new_string_models_to_profiles = compute_new_profiles(
             logger, new_tuple_models
         )
-        logger.debug("Read the new anonymization profiles")
-        needed_string_models_to_profiles = (
-            get_needed_string_models_to_profiles(
-                logger,
-                new_string_models_to_profiles,
-                cached_string_models_to_profiles,
-                needed_tuple_models,
+
+    logger.debug("Read needed anonymization profiles")
+    needed_string_models_to_profiles = get_needed_string_models_to_profiles(
+        logger,
+        new_string_models_to_profiles,
+        cached_string_models_to_profiles,
+        needed_tuple_models,
+    )
+    latest_vehicles_to_string_models = {
+        k: combine_model_tuple_to_string(v)
+        for k, v in latest_vehicles_to_tuple_models.items()
+    }
+    logger.info(
+        "Prepared vehicle-to-model mapping for profile publication",
+        extra={
+            "json_fields": {
+                "vehicleCount": len(latest_vehicles_to_string_models),
+            }
+        },
+    )
+    missing_models = sorted(
+        set(latest_vehicles_to_string_models.values()).difference(
+            set(needed_string_models_to_profiles.keys())
+        )
+    )
+    if len(missing_models) > 0:
+        logger.error(
+            "Some vehicle models are missing anonymization profiles. Skip"
+            " publishing until profiles are available.",
+            extra={
+                "json_fields": {
+                    "missingModels": missing_models,
+                    "availableModels": sorted(
+                        needed_string_models_to_profiles.keys()
+                    ),
+                }
+            },
+        )
+        return producer_message_data, min_event_timestamp
+
+    logger.debug("Form message data to send")
+    producer_message_data = form_producer_message_data(
+        dict(sorted(latest_vehicles_to_string_models.items())),
+        dict(sorted(needed_string_models_to_profiles.items())),
+    )
+    logger.debug("Extract event timestamp to send")
+    event_timestamps = {
+        feed_publisher_id: message.event_timestamp()
+        for feed_publisher_id, message in latest_messages.items()
+        if message is not None
+    }
+    for feed_publisher_id, event_timestamp in event_timestamps.items():
+        if event_timestamp is None:
+            message = latest_messages[feed_publisher_id]
+            logger.critical(
+                "Event timestamp should exist for latest catalogue message,"
+                " but it is missing.",
+                extra={
+                    "json_fields": {
+                        "messageDataString": message.data().decode(
+                            encoding="utf-8", errors="replace"
+                        ),
+                        "feedPublisherId": feed_publisher_id,
+                        "topic": message.topic_name(),
+                        "properties": message.properties(),
+                    }
+                },
             )
-        )
-        latest_vehicles_to_string_models = {
-            k: combine_model_tuple_to_string(v)
-            for k, v in latest_vehicles_to_tuple_models.items()
-        }
-        logger.debug("Form message data to send")
-        producer_message_data = form_producer_message_data(
-            dict(sorted(latest_vehicles_to_string_models.items())),
-            dict(sorted(needed_string_models_to_profiles.items())),
-        )
-        logger.debug("Extract event timestamp to send")
-        event_timestamps = {
-            feed_publisher_id: message.event_timestamp()
-            for feed_publisher_id, message in latest_messages.items()
-        }
-        for feed_publisher_id, event_timestamp in event_timestamps.items():
-            if event_timestamp is None:
-                message = latest_messages[feed_publisher_id]
-                logger.critical(
-                    "Event timestamp must exist as we have computed new models"
-                    " and that requires that a message has been received."
-                    " Either we have a logic error or the message is missing"
-                    " its event timestamp in the source topic.",
-                    extra={
-                        "json_fields": {
-                            "messageDataString": message.data().decode(
-                                encoding="utf-8", errors="replace"
-                            ),
-                            "feedPublisherId": feed_publisher_id,
-                            "topic": message.topic_name(),
-                            "properties": message.properties(),
-                        }
-                    },
-                )
-        nonempty_event_timestamps = {
-            k: v for k, v in event_timestamps.items() if v is not None
-        }
-        min_event_timestamp = time.time_ns() // 1_000_000
-        if len(nonempty_event_timestamps) > 0:
-            min_event_timestamp = min(nonempty_event_timestamps.values())
+    nonempty_event_timestamps = {
+        k: v for k, v in event_timestamps.items() if v is not None
+    }
+    min_event_timestamp = time.time_ns() // 1_000_000
+    if len(nonempty_event_timestamps) > 0:
+        min_event_timestamp = min(nonempty_event_timestamps.values())
     return producer_message_data, min_event_timestamp
 
 
