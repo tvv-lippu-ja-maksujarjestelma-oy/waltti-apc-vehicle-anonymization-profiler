@@ -117,12 +117,13 @@ def test_generate_message_to_send_publishes_without_new_models(mocker):
         "waltti_apc_vehicle_anonymization_profiler.message_processing.compute_new_profiles"
     )
 
-    producer_message_data, event_timestamp = (
-        message_processing.generate_message_to_send(
-            logger,
-            {"35-40": "fake-csv"},
-            latest_messages,
-        )
+    (
+        producer_message_data,
+        event_timestamp,
+    ) = message_processing.generate_message_to_send(
+        logger,
+        {"35-40": "fake-csv"},
+        latest_messages,
     )
 
     compute_new_profiles.assert_not_called()
@@ -160,12 +161,14 @@ def test_validate_vehicle_catalogue_skips_invalid_feed_publisher(mocker):
     invalid_message.event_timestamp.return_value = 2
     invalid_message.properties.return_value = {}
 
-    result = message_processing.validate_and_return_vehicle_apc_mapping_messages(
-        logger,
-        {
-            "fi:jyvaskyla": valid_message,
-            "fi:kuopio": invalid_message,
-        },
+    result = (
+        message_processing.validate_and_return_vehicle_apc_mapping_messages(
+            logger,
+            {
+                "fi:jyvaskyla": valid_message,
+                "fi:kuopio": invalid_message,
+            },
+        )
     )
 
     assert "fi:jyvaskyla" in result
