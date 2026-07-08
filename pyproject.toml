@@ -9,8 +9,9 @@ repository = "https://github.com/tvv-lippu-ja-maksujarjestelma-oy/waltti-apc-veh
 packages = [{include = "waltti_apc_vehicle_anonymization_profiler", from = "src"}]
 
 [tool.poetry.dependencies]
-# As the library is used only here, use the master branch directly.
-apc-anonymizer = {git = "https://github.com/tvv-lippu-ja-maksujarjestelma-oy/waltti-apc-vehicle-anonymization-profiler-library.git"}
+# Pin the library to a release tag so lockfile regeneration cannot
+# silently move the privacy engine.
+apc-anonymizer = {git = "https://github.com/tvv-lippu-ja-maksujarjestelma-oy/waltti-apc-vehicle-anonymization-profiler-library.git", tag = "v0.1.0"}
 flask = "^2.3.3"
 google-cloud-logging = "^3.6.0"
 jax = "==0.4.17"
