@@ -9,6 +9,9 @@ name: "CI/CD: Continuous integration and continuous deployment"
       - "v*"
   pull_request:
 
+permissions:
+  contents: read
+
 env:
   IMAGE_NAME: "tvvlmj/${{ github.event.repository.name }}"
   TEST_STAGE: tester
@@ -21,12 +24,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Set up Python 3.11
         uses: actions/setup-python@v4
         with:
           python-version: "3.11"
           # Use pip caching; Poetry will be installed in the next step
           cache: "pip"
+      - name: Test dependency policy
+        run: node --test .github/dependency-policy/*.cases.cjs
       - name: Install tool dependencies
         run: |
           python -m pip install --upgrade pip
