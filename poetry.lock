@@ -40,7 +40,7 @@ pyyaml = "^6.0"
 [package.source]
 type = "git"
 url = "https://github.com/tvv-lippu-ja-maksujarjestelma-oy/waltti-apc-vehicle-anonymization-profiler-library.git"
-reference = "HEAD"
+reference = "v0.1.0"
 resolved_reference = "e34b39513a90075489128ff7d45d7f8c338e3833"
 
 [[package]]
@@ -1821,4 +1821,4 @@ watchdog = ["watchdog (>=2.3)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "eb318a75b0ca08aee4c1942374eba3a3ff0b54ccf9c0301c35c37cadcbd2e664"
+content-hash = "37661e430305b0846802ba031ac0a3b1b27e545299e8ce1ac84ef65482760e02"
