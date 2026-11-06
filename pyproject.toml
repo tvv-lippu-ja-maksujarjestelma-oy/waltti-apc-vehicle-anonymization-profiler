@@ -12,7 +12,7 @@ packages = [{include = "waltti_apc_vehicle_anonymization_profiler", from = "src"
 # Pin the library to a release tag so lockfile regeneration cannot
 # silently move the privacy engine.
 apc-anonymizer = {git = "https://github.com/tvv-lippu-ja-maksujarjestelma-oy/waltti-apc-vehicle-anonymization-profiler-library.git", tag = "v0.1.0"}
-flask = "^2.3.3"
+flask = ">=2.3.3,<4.0.0"
 google-cloud-logging = "^3.6.0"
 jax = "==0.4.17"
 jaxlib = {version = "==0.4.17", source = "jax-archive"}
